@@ -53,6 +53,8 @@ class ModernPDFViewer:
         self.zoom = 1.0
         self.images = []
         self.current_image = None
+        self.pages_frame = None  # Will hold all pages
+        self.pages = []  # Will store page widgets
         
         # Bind keyboard shortcuts
         self.root.bind("<Control-o>", lambda e: self.open_pdf())
@@ -69,6 +71,10 @@ class ModernPDFViewer:
         # Configure style
         self.style = ttk.Style()
         self.style.theme_use('default')
+        
+        # Configure custom styles
+        self.style.configure('Pages.TFrame', background=self.get_color('canvas'))
+        self.style.configure('Page.TFrame', background=self.get_color('canvas'))
         
         # Main container
         self.main_frame = ttk.Frame(self.root)
@@ -130,14 +136,20 @@ class ModernPDFViewer:
         self.canvas_frame = ttk.Frame(self.main_frame)
         self.canvas_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Canvas for PDF display
+        # Create a canvas with scrollbars
         self.canvas = tk.Canvas(
-            self.canvas_frame, 
+            self.canvas_frame,
             bg=self.get_color('canvas'),
             highlightthickness=0
         )
         
-        # Scrollbars
+        # Create a frame inside the canvas to hold the pages
+        self.pages_frame = ttk.Frame(self.canvas, style='Pages.TFrame')
+        
+        # Create a window in the canvas to hold the frame
+        self.canvas.create_window((0, 0), window=self.pages_frame, anchor='nw')
+        
+        # Create scrollbars
         self.scroll_y = ttk.Scrollbar(self.canvas_frame, orient="vertical", command=self.canvas.yview)
         self.scroll_x = ttk.Scrollbar(self.canvas_frame, orient="horizontal", command=self.canvas.xview)
         self.canvas.configure(yscrollcommand=self.scroll_y.set, xscrollcommand=self.scroll_x.set)
@@ -146,6 +158,14 @@ class ModernPDFViewer:
         self.canvas.grid(row=0, column=0, sticky="nsew")
         self.scroll_y.grid(row=0, column=1, sticky="ns")
         self.scroll_x.grid(row=1, column=0, sticky="ew")
+        
+        # Bind the canvas configure event to update the scroll region
+        self.pages_frame.bind('<Configure>', self.on_frame_configure)
+        
+        # Bind mouse wheel for scrolling
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        self.canvas.bind_all("<Button-4>", lambda e: self._on_mousewheel(e, delta=120))  # Linux up
+        self.canvas.bind_all("<Button-5>", lambda e: self._on_mousewheel(e, delta=-120))  # Linux down
         
         # Configure grid weights
         self.canvas_frame.grid_rowconfigure(0, weight=1)
@@ -258,115 +278,193 @@ class ModernPDFViewer:
         self.current_page = 0
         self.zoom = 1.0
         self.show_page()
-    
-    def show_page(self):
-        if not self.doc:
-            return
-            
+
+def on_enter(self, event, button):
+    button.config(bg=self.get_color('button_hover'))
+
+def on_leave(self, event, button):
+    button.config(bg=self.get_color('button'))
+
+def on_press(self, event, button):
+    button.config(bg=self.get_color('button_active'))
+
+def on_release(self, event, button):
+    button.config(bg=self.get_color('button_hover'))
+
+def load_settings(self):
+    if self.settings_file.exists():
         try:
-            # Get the page
-            page = self.doc.load_page(self.current_page)
-            
-            # Render page to an image
-            zoom_matrix = fitz.Matrix(self.zoom, self.zoom)
-            pix = page.get_pixmap(matrix=zoom_matrix)
-            
-            # Convert to ImageTk format
-            img_data = pix.tobytes("ppm")
-            img = Image.open(io.BytesIO(img_data))
-            
-            # Apply brightness
-            enhancer = ImageEnhance.Brightness(img)
-            img = enhancer.enhance(self.brightness)
-            
-            # Apply night mode effect if needed
-            if self.theme == 'dark':
-                # Invert colors for dark mode
-                img = Image.eval(img, lambda x: 255 - x)
-                # Reduce brightness for eye comfort
-                enhancer = ImageEnhance.Brightness(img)
-                img = enhancer.enhance(0.7)
-            
-            self.current_image = ImageTk.PhotoImage(image=img)
-            
-            # Keep a reference to the image
-            self.images.append(self.current_image)
-            
-            # Clear canvas and update
-            self.canvas.delete("all")
-            
-            # Center the image
-            canvas_width = self.canvas.winfo_width()
-            canvas_height = self.canvas.winfo_height()
-            
-            if canvas_width <= 1 or canvas_height <= 1:
-                canvas_width = 800
-                canvas_height = 600
-            
-            img_width = self.current_image.width()
-            img_height = self.current_image.height()
-            
-            # Calculate position to center the image
-            x = max(0, (canvas_width - img_width) // 2)
-            y = max(0, (canvas_height - img_height) // 2)
-            
-            # Update canvas
-            self.canvas.create_image(x, y, anchor=tk.NW, image=self.current_image)
-            self.canvas.config(scrollregion=(0, 0, max(canvas_width, img_width), max(canvas_height, img_height)))
-            
-            # Update status
-            self.status_var.set(f"Page {self.current_page + 1} of {len(self.doc)}")
-            
-        except Exception as e:
-            messagebox.showerror("Error", f"Error displaying page: {str(e)}")
-    
-    def next_page(self):
-        if self.doc and self.current_page < len(self.doc) - 1:
-            self.current_page += 1
-            self.show_page()
-    
-    def prev_page(self):
-        if self.doc and self.current_page > 0:
-            self.current_page -= 1
-            self.show_page()
-    
-    def change_zoom(self, factor):
-        if not self.doc:
-            return
-            
-        self.zoom *= factor
-        self.zoom = max(0.1, min(5.0, self.zoom))  # Limit zoom range
-        self.show_page()
-    
-    def update_brightness(self, value):
-        try:
-            self.brightness = float(value)
-            if self.doc:
-                self.show_page()
-        except ValueError:
+            with open(self.settings_file, 'r') as f:
+                return json.load(f)
+        except:
             pass
-    
-    def toggle_night_mode(self):
-        self.theme = 'dark' if self.theme == 'light' else 'light'
-        self.update_theme()
-    
-    def on_mousewheel(self, event, delta=None):
-        if delta is None:
-            delta = event.delta
-        
-        # Check if Control key is pressed for zooming
-        if event.state & 0x4:  # Control key
-            if delta > 0:
-                self.change_zoom(1.1)
-            else:
-                self.change_zoom(0.9)
+    return {}
+
+def save_settings(self):
+    self.settings['theme'] = self.theme
+    self.settings['brightness'] = self.brightness
+    with open(self.settings_file, 'w') as f:
+        json.dump(self.settings, f)
+
+def try_open_test_pdf(self):
+    test_pdf = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_document.pdf")
+    if os.path.exists(test_pdf):
+        try:
+            self.load_pdf(test_pdf)
+            self.status_var.set(f"Opened: {os.path.basename(test_pdf)}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not open test PDF: {str(e)}")
+
+def open_pdf(self):
+    filepath = filedialog.askopenfilename(
+        filetypes=[("PDF Files", "*.pdf"), ("All Files", "*.*")]
+    )
+
+    if not filepath:
+        return
+
+    try:
+        self.load_pdf(filepath)
+        self.status_var.set(f"Opened: {os.path.basename(filepath)}")
+    except Exception as e:
+        messagebox.showerror("Error", f"Could not open PDF: {str(e)}")
+
+def load_pdf(self, filepath):
+    # Clear previous document
+    for widget in self.pages_frame.winfo_children():
+        widget.destroy()
+    self.pages = []
+
+    # Open the PDF
+    self.doc = fitz.open(filepath)
+    self.current_page = 0
+    self.zoom = 1.0
+    self.show_page()
+
+def show_page(self):
+    if not self.doc:
+        return
+
+    # Clear previous pages
+    for widget in self.pages_frame.winfo_children():
+        widget.destroy()
+    self.pages = []
+
+    # Get the total number of pages
+    total_pages = len(self.doc)
+
+    # Render all pages
+    for page_num in range(total_pages):
+        # Create a frame for each page
+        page_frame = ttk.Frame(self.pages_frame, padding=10, style='Page.TFrame')
+        page_frame.pack(fill=tk.X, pady=5)
+
+        # Create a canvas for the page
+        page_canvas = tk.Canvas(page_frame, bg='white', highlightthickness=1, highlightbackground='#cccccc')
+        page_canvas.pack()
+
+        # Get and render the page
+        page = self.doc.load_page(page_num)
+        mat = fitz.Matrix(self.zoom, self.zoom)
+        pix = page.get_pixmap(matrix=mat, alpha=False)
+
+        # Convert to ImageTk format
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+        # Apply brightness
+        enhancer = ImageEnhance.Brightness(img)
+        img = enhancer.enhance(self.brightness)
+
+        # Apply night mode effect if needed
+        if self.theme == 'dark':
+            # Invert colors for dark mode
+            img = Image.eval(img, lambda x: 255 - x)
+            # Reduce brightness for eye comfort
+            enhancer = ImageEnhance.Brightness(img)
+            img = enhancer.enhance(0.7)
+
+        # Convert to PhotoImage and keep a reference
+        photo = ImageTk.PhotoImage(img)
+        self.pages.append(photo)  # Keep a reference
+
+        # Display the image
+        page_canvas.create_image(0, 0, anchor=tk.NW, image=photo)
+        page_canvas.config(width=img.width, height=img.height)
+
+        # Add page number
+        page_label = ttk.Label(page_frame, text=f"Page {page_num + 1} of {total_pages}")
+        page_label.pack(pady=(5, 15))
+
+    # Update status bar
+    self.status_var.set(f"Showing all pages (1-{total_pages})")
+
+    # Update the canvas scroll region
+    self.canvas.update_idletasks()
+    self.canvas.config(scrollregion=self.canvas.bbox("all"))
+
+def next_page(self):
+    if self.doc and self.current_page < len(self.doc) - 1:
+        self.current_page += 1
+        self.show_page()
+
+def prev_page(self):
+    if self.doc and self.current_page > 0:
+        self.current_page -= 1
+        self.show_page()
+
+def change_zoom(self, factor):
+    if not self.doc:
+        return
+
+    self.zoom *= factor
+    self.zoom = max(0.1, min(5.0, self.zoom))  # Limit zoom range
+    self.show_page()
+
+def update_brightness(self, value):
+    try:
+        self.brightness = float(value)
+        if self.doc:
+            self.show_page()
+    except ValueError:
+        pass
+
+def toggle_night_mode(self):
+    self.theme = 'dark' if self.theme == 'light' else 'light'
+    self.update_theme()
+
+def on_mousewheel(self, event, delta=None):
+    if delta is None:
+        delta = event.delta
+
+    # Check if Control key is pressed for zooming
+    if event.state & 0x4:  # Control key
+        if delta > 0:
+            self.change_zoom(1.1)
         else:
-            # Normal scrolling
-            self.canvas.yview_scroll(-1 * (delta // 120), "units")
-    
-    def on_closing(self):
-        self.save_settings()
-        self.root.destroy()
+            self.change_zoom(0.9)
+    else:
+        # Normal scrolling
+        self.canvas.yview_scroll(-1 * (delta // 120), "units")
+
+def on_frame_configure(self, event=None):
+    """Reset the scroll region to encompass the inner frame"""
+    self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+def _on_mousewheel(self, event, delta=None):
+    """Handle mouse wheel for scrolling"""
+    if delta is None:
+        delta = event.delta
+
+    # On Windows, delta is 120 per wheel click
+    # On macOS, it might be different, so we normalize it
+    if abs(delta) > 100:  # Windows
+        delta = delta // abs(delta) * 2
+
+    self.canvas.yview_scroll(-1 * delta, "units")
+
+def on_closing(self):
+    self.save_settings()
+    self.root.destroy()
 
 def main():
     root = tk.Tk()
