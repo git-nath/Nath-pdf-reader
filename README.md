@@ -1,51 +1,184 @@
-# NathFile Reader
+# NathReader
 
-A modern file reader application for Windows 11 that supports PDF, DOCX, and PPTX files.
+A modern PDF reader application with a clean and intuitive interface, built with Python and CustomTkinter.
 
-## Features
-- View PDF, DOCX, and PPTX files
-- Search within documents
-- Bookmark pages
-- Print documents
-- Modern Windows 11 UI
-- File associations for supported formats
-- Light and dark theme support
+![NathReader Screenshot](screenshot.png)
 
-## Installation
+## 📋 Features
 
-### Method 1: Using the Installer (Recommended)
-1. Download the latest installer (`NathFileReader-Setup.exe`) from the releases
-2. Run the installer and follow the on-screen instructions
-3. Launch NathFile Reader from the Start Menu
+- **Modern UI**: Clean, responsive interface with light and dark themes
+- **PDF Support**: View and navigate PDF documents
+- **Page Navigation**: Easily move between pages
+- **Zoom Controls**: Zoom in/out and fit to width/page
+- **Search**: Find text within documents
+- **Bookmarks**: Save your place in documents
+- **Recent Files**: Quick access to recently opened documents
+- **Customizable**: Adjust appearance and behavior to your preferences
 
-### Method 2: Portable Version
-1. Download the portable zip file (`NathFileReader-Portable.zip`)
-2. Extract the zip file to your preferred location
-3. Run `NathFileReader.exe` from the extracted folder
+## 🚀 Installation
 
-### Method 3: From Source
-1. Install Python 3.7 or higher
-2. Clone this repository
-3. Run `pip install -r requirements.txt`
-4. Run `python main.py`
+### Prerequisites
+- Python 3.8 or higher
+- pip (Python package manager)
 
-## Building from Source
+### Method 1: From PyPI (Coming Soon)
+```bash
+pip install nathreader
+```
 
-1. Install the required dependencies:
+### Method 2: From Source
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/nathreader.git
+   cd nathreader
    ```
+
+2. Create and activate a virtual environment (recommended):
+   ```bash
+   python -m venv venv
+   .\venv\Scripts\activate  # On Windows
+   source venv/bin/activate  # On macOS/Linux
+   ```
+
+3. Install the package in development mode:
+   ```bash
+   pip install -e .
+   ```
+
+4. Install dependencies:
+   ```bash
    pip install -r requirements.txt
-   pip install pyinstaller
    ```
 
-2. Build the executable:
-   ```
-   .\build.bat
+## 🖥️ Usage
+
+Run the application:
+```bash
+nathreader
+```
+
+Or to open a specific PDF:
+```bash
+nathreader path/to/your/document.pdf
+```
+
+## ⌨️ Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+O` | Open document |
+| `Ctrl+Q` | Quit |
+| `Left/Right Arrow` | Previous/Next page |
+| `Ctrl++` | Zoom in |
+| `Ctrl+-` | Zoom out |
+| `F1` | Show help |
+
+## 🛠️ Development
+
+### Project Structure
+
+```
+nathreader/
+├── src/
+│   └── nathreader/
+│       ├── __init__.py
+│       ├── __main__.py
+│       ├── app.py
+│       ├── core/
+│       │   └── document.py
+│       ├── ui/
+│       │   ├── __init__.py
+│       │   ├── toolbar.py
+│       │   ├── statusbar.py
+│       │   ├── settings_dialog.py
+│       │   └── theme.py
+│       └── utils/
+│           ├── __init__.py
+│           ├── file_utils.py
+│           └── settings.py
+├── tests/
+├── setup.py
+├── requirements.txt
+└── README.md
+```
+
+### Running Tests
+
+```bash
+pytest
+```
+
+### Building the Application
+
+To create a standalone executable:
+
+```bash
+pip install pyinstaller
+pyinstaller --onefile --windowed --name NathReader src/nathreader/__main__.py
+```
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 🏗️ Project Structure
+
+```
+nathreader/
+├── src/
+│   └── nathreader/         # Main package
+│       ├── core/           # Core functionality
+│       ├── ui/             # User interface components
+│       ├── utils/          # Utility functions
+│       ├── __init__.py
+│       └── __main__.py     # Entry point
+├── tests/                  # Test files
+├── config/                 # Configuration files
+├── scripts/                # Build and utility scripts
+├── .gitignore
+├── pyproject.toml          # Project metadata and dependencies
+└── README.md
+```
+
+## 🛠️ Development
+
+### Setting up the development environment
+1. Fork and clone the repository
+2. Set up a virtual environment and install dependencies:
+   ```bash
+   python -m venv venv
+   .\venv\Scripts\activate
+   pip install -e .[dev]
    ```
 
-3. Create the installer (requires Inno Setup):
-   - Install Inno Setup from https://jrsoftware.org/isdl.php
-   - Right-click on `setup.iss` and select "Compile"
-   - The installer will be created in the `installer` folder
+### Running tests
+```bash
+pytest
+```
+
+### Building the application
+1. Install build dependencies:
+   ```bash
+   pip install build
+   ```
+
+2. Build the package:
+   ```bash
+   python -m build
+   ```
+
+### Creating an installer
+1. Install Inno Setup from https://jrsoftware.org/isdl.php
+2. Run the build script:
+   ```bash
+   .\scripts\build.bat
+   ```
+3. The installer will be created in the `dist` directory
 
 ## Usage
 
