@@ -50,8 +50,28 @@ class Toolbar(ttk.Frame):
         # View buttons
         self._create_button(view_frame, 'Zoom In', 'zoom_in', '🔍+')
         self._create_button(view_frame, 'Zoom Out', 'zoom_out', '🔍-')
-        self._create_button(view_frame, 'Fit Width', 'fit_width', '⇔')
+        self._create_button(view_frame, 'Fit Width', 'fit_width', '↔️')
         self._create_button(view_frame, 'Fit Page', 'fit_page', '⤢')
+        
+        # Brightness control
+        brightness_frame = ttk.Frame(view_frame, style='Toolbar.TFrame')
+        brightness_frame.pack(side='left', padx=5)
+        
+        # Brightness label
+        ttk.Label(brightness_frame, text='🔆', style='Toolbar.TLabel').pack(side='left')
+        
+        # Brightness slider
+        self.brightness_slider = ttk.Scale(
+            brightness_frame,
+            from_=0.1,
+            to=2.0,
+            value=1.0,
+            orient='horizontal',
+            length=80,
+            command=self._on_brightness_change
+        )
+        self.brightness_slider.pack(side='left', padx=2)
+        self.brightness_slider.set(1.0)  # Default brightness
         
         # Tools buttons
         self._create_button(tools_frame, 'Search', 'search', '🔍')
@@ -69,25 +89,46 @@ class Toolbar(ttk.Frame):
         )
         page_label.pack(side='left', padx=5)
     
-    def _create_button(self, parent: ttk.Frame, text: str, command: str, icon: str = '') -> None:
+    def _on_brightness_change(self, value):
+        """Handle brightness slider change."""
+        try:
+            brightness = float(value)
+            self._trigger_callback('set_brightness', brightness)
+        except (ValueError, TypeError):
+            pass
+    
+    def set_brightness(self, value: float) -> None:
+        """Set the brightness slider value.
+        
+        Args:
+            value: Brightness value (0.1 to 2.0)
+        """
+        self.brightness_slider.set(min(max(0.1, float(value)), 2.0))
+    
+    def _create_button(self, parent, text, command, symbol=None, tooltip=None):
         """Create a toolbar button.
         
         Args:
             parent: Parent widget.
             text: Button text.
-            command: Command name to call when clicked.
-            icon: Optional icon to display.
+            command: Command to execute when clicked.
+            symbol: Optional symbol to display instead of text.
+            tooltip: Optional tooltip text.
+            
+        Returns:
+            ttk.Button: The created button.
         """
-        btn = ttk.Button(
-            parent,
-            text=f"{icon} {text}" if icon else text,
-            style='Toolbutton.TButton',
-            command=lambda: self._handle_command(command)
-        )
+        if symbol:
+            btn = ttk.Button(parent, text=symbol, width=2, command=lambda: self._trigger_callback(command))
+        else:
+            btn = ttk.Button(parent, text=text, command=lambda: self._trigger_callback(command))
+            
         btn.pack(side='left', padx=1, pady=1)
         
-        # Add tooltip
-        self._add_tooltip(btn, text)
+        if tooltip:
+            self._create_tooltip(btn, tooltip)
+            
+        return btn
     
     def _add_tooltip(self, widget: ttk.Widget, text: str) -> None:
         """Add a tooltip to a widget.
@@ -109,14 +150,33 @@ class Toolbar(ttk.Frame):
         if command in self._callbacks:
             self._callbacks[command]()
     
-    def register_callback(self, command: str, callback: Callable) -> None:
-        """Register a callback for a command.
+    def register_callback(self, event: str, callback: Callable) -> None:
+        """Register a callback function for an event.
         
         Args:
-            command: The command name.
-            callback: The function to call when the command is triggered.
+            event: Event name (e.g., 'open_file', 'prev_page').
+            callback: Function to call when the event is triggered.
         """
-        self._callbacks[command] = callback
+        self._callbacks[event] = callback
+        
+        # Special handling for brightness control
+        if event == 'set_brightness':
+            self.brightness_slider.config(command=lambda v: callback(float(v)))
+    
+    def _trigger_callback(self, event: str, *args, **kwargs) -> Any:
+        """Trigger a callback function.
+        
+        Args:
+            event: Event name.
+            *args: Positional arguments to pass to the callback.
+            **kwargs: Keyword arguments to pass to the callback.
+            
+        Returns:
+            Any: The return value of the callback function, or None if no callback is registered.
+        """
+        if event in self._callbacks:
+            return self._callbacks[event](*args, **kwargs)
+        return None
     
     def update_page_counter(self, current: int, total: int) -> None:
         """Update the page counter.

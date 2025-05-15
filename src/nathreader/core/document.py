@@ -24,6 +24,7 @@ class Document:
         self._page_count = 0
         self._current_page = 0
         self._loaded = False
+        self._brightness = 1.0  # 1.0 is normal brightness
     
     def __del__(self):
         """Clean up resources when the object is deleted."""
@@ -79,6 +80,67 @@ class Document:
             logger.error(f"Error loading document metadata: {e}")
             self._metadata = {}
     
+    def set_brightness(self, value: float) -> None:
+        """Set the brightness level.
+        
+        Args:
+            value: Brightness value (0.0 to 2.0, where 1.0 is normal)
+        """
+        old_value = getattr(self, '_brightness', 1.0)
+        self._brightness = max(0.1, min(2.0, float(value)))  # Clamp between 0.1 and 2.0
+        logger.debug(f"Document brightness changed from {old_value} to {self._brightness}")
+    
+    def get_brightness(self) -> float:
+        """Get the current brightness level.
+        
+        Returns:
+            float: Current brightness value.
+        """
+        return self._brightness
+    
+    def _apply_brightness(self, image: Image.Image) -> Image.Image:
+        """Apply brightness adjustment to an image.
+        
+        Args:
+            image: Input PIL Image
+            
+        Returns:
+            Image.Image: Image with brightness adjusted
+        """
+        try:
+            if not hasattr(self, '_brightness') or self._brightness == 1.0:
+                return image
+                
+            # Ensure we have a valid image
+            if image is None:
+                return None
+                
+            # Convert to RGB if needed
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            # Convert to numpy array for faster processing
+            import numpy as np
+            
+            # Convert to float for calculations
+            img_array = np.array(image, dtype=np.float32) / 255.0
+            
+            # Apply brightness
+            img_array = img_array * self._brightness
+            
+            # Clip values to [0, 1] range
+            img_array = np.clip(img_array, 0, 1)
+            
+            # Convert back to 8-bit
+            img_array = (img_array * 255).astype(np.uint8)
+            
+            # Convert back to PIL Image
+            return Image.fromarray(img_array, 'RGB')
+            
+        except Exception as e:
+            logger.error(f"Error applying brightness: {e}")
+            return image
+    
     def get_page(self, page_num: int, zoom: float = 1.0) -> Optional[Image.Image]:
         """Get a page as a PIL Image.
         
@@ -89,20 +151,32 @@ class Document:
         Returns:
             Optional[Image.Image]: The page as a PIL Image, or None if there was an error.
         """
-        if not self._loaded or self._document is None:
-            return None
-            
-        if not 0 <= page_num < self._page_count:
-            return None
-            
         try:
+            if not self._loaded or self._document is None:
+                logger.warning("Document not loaded or invalid")
+                return None
+                
+            if not 0 <= page_num < self._page_count:
+                logger.warning(f"Page number {page_num} out of range (0-{self._page_count-1})")
+                return None
+                
+            # Get page and render to pixmap
             page = self._document.load_page(page_num)
             mat = fitz.Matrix(zoom, zoom)
             pix = page.get_pixmap(matrix=mat, alpha=False)
             
             # Convert to PIL Image
-            img_data = pix.tobytes('ppm')
-            return Image.open(io.BytesIO(img_data))
+            img = Image.frombytes('RGB', [pix.width, pix.height], pix.samples)
+            
+            # Apply brightness if needed
+            if hasattr(self, '_brightness') and self._brightness != 1.0:
+                img = self._apply_brightness(img)
+                
+            return img
+            
+        except Exception as e:
+            logger.error(f"Error in get_page: {e}")
+            return None
             
         except Exception as e:
             logger.error(f"Error getting page {page_num}: {e}")

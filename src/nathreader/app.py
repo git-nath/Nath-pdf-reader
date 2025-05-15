@@ -80,6 +80,7 @@ class PDFReaderApp(ctk.CTk):
         self.toolbar.register_callback('fit_width', self.fit_width)
         self.toolbar.register_callback('fit_page', self.fit_page)
         self.toolbar.register_callback('settings', self.show_settings)
+        self.toolbar.register_callback('set_brightness', self.set_brightness)
         
         # Create main content area
         self.content_frame = ttk.Frame(self, style='Content.TFrame')
@@ -134,6 +135,9 @@ class PDFReaderApp(ctk.CTk):
         
         # Update the UI based on the current theme
         self._update_theme()
+        
+        # Initialize brightness
+        self._brightness = 1.0  # Default brightness
     
     def _update_theme(self) -> None:
         """Update the UI based on the current theme."""
@@ -184,6 +188,18 @@ class PDFReaderApp(ctk.CTk):
             self.settings.set('window_size', [self.winfo_width(), self.winfo_height()])
             self.settings.set('window_position', [self.winfo_x(), self.winfo_y()])
     
+    def _add_to_recent_files(self, filepath: str) -> None:
+        """Add a file to the recent files list in settings.
+        
+        Args:
+            filepath: Path to the file to add to recent files
+        """
+        try:
+            if hasattr(self, 'settings') and hasattr(self.settings, 'add_recent_file'):
+                self.settings.add_recent_file(filepath)
+        except Exception as e:
+            logger.warning(f"Could not add to recent files: {e}")
+    
     def open_document(self, filepath: Optional[str] = None) -> None:
         """Open a document.
         
@@ -191,87 +207,135 @@ class PDFReaderApp(ctk.CTk):
             filepath: Path to the document to open. If None, shows a file dialog.
         """
         if filepath is None:
-            # Show file dialog
-            initial_dir = self.settings.get('default_directory', os.path.expanduser('~'))
-            filetypes = [
-                ('PDF Files', '*.pdf'),
-                ('All Files', '*.*')
-            ]
-            
             filepath = filedialog.askopenfilename(
                 title="Open Document",
-                initialdir=initial_dir,
-                filetypes=filetypes
+                filetypes=(
+                    ("PDF Files", "*.pdf"),
+                    ("All Files", "*.*")
+                )
             )
             
             if not filepath:
-                return  # User cancelled
-        
-        # Check if the file exists
-        if not os.path.isfile(filepath):
+                return
+                
+        if not os.path.exists(filepath):
             messagebox.showerror("Error", f"File not found: {filepath}")
             return
-        
-        # Close current document if open
-        if self.current_doc is not None:
-            self.current_doc.close()
-            self.current_doc = None
         
         try:
             # Create appropriate document handler
             doc = DocumentFactory.create_document(filepath)
             if doc is None:
-                messagebox.showerror("Error", f"Unsupported file type: {os.path.splitext(filepath)[1]}")
-                return
-            
+                raise ValueError("Unsupported file format")
+                
             # Load the document
             if not doc.load():
                 raise Exception("Failed to load document")
             
-            # Update document references
+            # Close current document if open
+            if self.current_doc is not None:
+                self.current_doc.close()
+            
+            # Set the new document
             self.current_doc = doc
             self.current_file = filepath
             self.current_page = 0
             
+            # Apply current brightness setting to the new document
+            if hasattr(self, '_brightness'):
+                doc.set_brightness(self._brightness)
+            
             # Update UI
-            self.title(f"NathReader - {os.path.basename(filepath)}")
-            self.status_bar.set_status(f"Opened: {os.path.basename(filepath)}")
-            
-            # Add to recent files
-            self.settings.add_recent_file(filepath)
-            
-            # Display the first page
+            self.title(f"NathReader - {Path(filepath).name}")
+            self.toolbar.update_page_counter(1, self.current_doc.page_count)
             self.show_page()
             
-            # Update toolbar
-            self.toolbar.update_page_counter(1, self.current_doc.page_count)
+            # Add to recent files
+            self._add_to_recent_files(filepath)
             
         except Exception as e:
             logger.exception("Error opening document")
             messagebox.showerror("Error", f"Failed to open document: {str(e)}")
+    
+    def set_brightness(self, value: float) -> None:
+        """Set the brightness level.
+        
+        Args:
+            value: Brightness value (0.1 to 2.0)
+        """
+        try:
+            value = float(value)
+            if not 0.1 <= value <= 2.0:
+                logger.warning(f"Brightness value {value} out of range (0.1-2.0)")
+                return
+                
+            # Only update if brightness has changed significantly
+            if not hasattr(self, '_brightness') or abs(self._brightness - value) > 0.02:
+                logger.debug(f"Setting brightness to: {value}")
+                self._brightness = value
+                
+                # Update document brightness
+                if self.current_doc is not None:
+                    try:
+                        self.current_doc.set_brightness(value)
+                        self.show_page()  # Only update if brightness was set successfully
+                    except Exception as e:
+                        logger.error(f"Error updating document brightness: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Error setting brightness: {e}", exc_info=True)
     
     def show_page(self) -> None:
         """Display the current page."""
         if self.current_doc is None:
             return
         
-        # Clear previous page
-        for widget in self.pages_frame.winfo_children():
-            widget.destroy()
-        
         try:
-            # Get the page as a PIL Image
-            img = self.current_doc.get_page(self.current_page, self.zoom_level)
-            if img is None:
-                raise Exception("Failed to render page")
+            # Clear previous page
+            for widget in self.pages_frame.winfo_children():
+                widget.destroy()
+            
+            # Get the page as a PIL Image with current brightness
+            try:
+                img = self.current_doc.get_page(self.current_page, self.zoom_level)
+                if img is None:
+                    raise ValueError("Document returned None for page")
+                    
+                # Ensure we have a valid image
+                if not hasattr(img, 'mode') or not hasattr(img, 'size'):
+                    raise ValueError("Invalid image data received")
+                    
+                # Ensure image is in RGB mode
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                    
+            except Exception as e:
+                logger.error(f"Error getting page: {e}")
+                # Create a black image as fallback
+                img = Image.new('RGB', (595, 842), 'black')
+                
+                # Add error text
+                from PIL import ImageDraw, ImageFont
+                try:
+                    draw = ImageDraw.Draw(img)
+                    font = ImageFont.load_default()
+                    text = f"Error loading page {self.current_page + 1}"
+                    text_bbox = draw.textbbox((0, 0), text, font=font)
+                    text_width = text_bbox[2] - text_bbox[0]
+                    text_height = text_bbox[3] - text_bbox[1]
+                    x = (img.width - text_width) // 2
+                    y = (img.height - text_height) // 2
+                    draw.text((x, y), text, fill='white', font=font)
+                except Exception as draw_error:
+                    logger.error(f"Error drawing error message: {draw_error}")
             
             # Convert PIL Image to PhotoImage using ImageTk
             from PIL import ImageTk
             
-            # Convert image to RGB mode if it's not already
+            # Ensure image is in RGB mode
             if img.mode != 'RGB':
                 img = img.convert('RGB')
-                
+            
             # Create a PhotoImage from the PIL Image
             self.current_image = ImageTk.PhotoImage(image=img)
             
@@ -287,11 +351,18 @@ class PDFReaderApp(ctk.CTk):
             self.pages_frame.update_idletasks()
             self.canvas.config(scrollregion=self.canvas.bbox("all"))
             
-            # Update status bar
+            # Update status bar with page info
             self.status_bar.set_page_size(img.width, img.height)
             
+            # Update page counter
+            if hasattr(self, 'toolbar') and hasattr(self.current_doc, 'page_count'):
+                self.toolbar.update_page_counter(
+                    self.current_page + 1,
+                    self.current_doc.page_count
+                )
+            
         except Exception as e:
-            logger.exception("Error displaying page")
+            logger.exception("Error in show_page")
             messagebox.showerror("Error", f"Failed to display page: {str(e)}")
     
     def prev_page(self) -> None:
